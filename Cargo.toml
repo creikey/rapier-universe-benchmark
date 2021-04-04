@@ -9,3 +9,5 @@ edition = "2018"
 [dependencies]
 rapier2d = { version = "*", features = [ "enhanced-determinism" ] }
 raylib = "3.5"
+serde = "1.0.125"
+ron = "0.6.4"
