@@ -238,7 +238,7 @@ fn main() {
         } else if frames_simulated == FRAMES_IN_HASH {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
             universe.update_from_physics(&bodies, &colliders);
-            world_state_ron_string = ron::to_string(&universe).unwrap();
+            world_state_ron_string = ron::ser::to_string_pretty(&universe, ron::ser::PrettyConfig::default()).unwrap();
             universe = ron::from_str(&world_state_ron_string).unwrap();
             world_state_ron_string.as_str().hash(&mut hasher);
             world_state_hash_message = format!("{}", hasher.finish());
