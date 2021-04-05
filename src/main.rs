@@ -1,6 +1,6 @@
 use rapier2d_f64::dynamics::{RigidBody, RigidBodyHandle};
 use rapier2d_f64::geometry::{BroadPhase, ColliderBuilder, ColliderSet, NarrowPhase, SharedShape};
-use rapier2d_f64::na::Isometry2;
+use rapier2d_f64::na::{Isometry2, ComplexField};
 use rapier2d_f64::na::Vector2;
 use rapier2d_f64::pipeline::PhysicsPipeline;
 use rapier2d_f64::{
@@ -133,9 +133,9 @@ fn spawn_layer_of_planets(
 ) {
     for i in 0..num_planets_in_layer {
         let angle = ((i as f64) / (num_planets_in_layer as f64)) * (2.0 * PI);
-        let pos = V::new(angle.sin(), angle.cos());
+        let pos = V::new(ComplexField::sin(angle), ComplexField::cos(angle));
         let vel_angle = pos.angle(&V::x()) + PI / 2.0;
-        let vel = V::new(vel_angle.cos(), vel_angle.sin()) * tangential_speed;
+        let vel = V::new(ComplexField::cos(vel_angle), ComplexField::sin(vel_angle)) * tangential_speed;
         universe.new_with_vel(planet_size, pos * radius, vel);
     }
 }
