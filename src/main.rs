@@ -170,7 +170,6 @@ fn main() {
     spawn_layer_of_planets(&mut universe, 300.0, 3_000.0, -4000.0, 9);
     spawn_layer_of_planets(&mut universe, 300.0, 4_000.0, -4000.0, 13);
 
-
     universe.apply_physically(&mut bodies, &mut colliders);
 
     // -- INITIALIZING RAYLIB STUFF --
@@ -196,8 +195,9 @@ fn main() {
 
     // -- VARS RELATED TO THE WORLD HASH 5 SECONDS IN --
     let mut frames_simulated = 0;
-    let mut world_state_hash: String = String::from("processing...");
+    let mut world_state_hash_message: String = String::from("processing...");
     let mut world_state_hashed = false;
+    let mut world_state_ron_string: String = String::new();
 
     while !rl.window_should_close() {
         rl.get_time();
@@ -221,7 +221,10 @@ fn main() {
 
         // process user input
         if world_state_hashed && rl.is_key_pressed(KeyboardKey::KEY_C) {
-            rl.set_clipboard_text(&world_state_hash).unwrap();
+            rl.set_clipboard_text(&world_state_hash_message).unwrap();
+        }
+        if world_state_hashed && rl.is_key_pressed(KeyboardKey::KEY_S) {
+            rl.set_clipboard_text(&&world_state_ron_string).unwrap();
         }
         let zoom_change = (rl.is_key_down(KeyboardKey::KEY_Q) as u8 as f64)
             - (rl.is_key_down(KeyboardKey::KEY_E) as u8 as f64);
@@ -230,14 +233,15 @@ fn main() {
 
         // set hash stuff if countdown is done
         if frames_simulated < FRAMES_IN_HASH {
-            world_state_hash = format!("frames left: {}", FRAMES_IN_HASH - frames_simulated);
+            world_state_hash_message =
+                format!("frames left: {}", FRAMES_IN_HASH - frames_simulated);
         } else if frames_simulated == FRAMES_IN_HASH {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
             universe.update_from_physics(&bodies, &colliders);
-            let universe_ron_string = ron::to_string(&universe).unwrap();
-            universe = ron::from_str(&universe_ron_string).unwrap();
-            universe_ron_string.as_str().hash(&mut hasher);
-            world_state_hash = format!("{}", hasher.finish());
+            world_state_ron_string = ron::to_string(&universe).unwrap();
+            universe = ron::from_str(&world_state_ron_string).unwrap();
+            world_state_ron_string.as_str().hash(&mut hasher);
+            world_state_hash_message = format!("{}", hasher.finish());
             world_state_hashed = true;
 
             // now that I updated the universe from the serialized state, I need to clear the
@@ -345,11 +349,15 @@ fn main() {
         // draw hash information and other help
         let info_font_size = 16;
         let info_texts = [
-            format!("physics processing millis: {}", (physics_processing_micros as f32)/1000.0),
+            format!(
+                "physics processing millis: {}",
+                (physics_processing_micros as f32) / 1000.0
+            ),
             format!("program hash: {}", program_git_hash),
-            format!("world state hash: {}", world_state_hash),
+            format!("world state hash: {}", world_state_hash_message),
             String::from("use the q and e keys to zoom in and out"),
             String::from("Press c to copy world hash to clipboard"),
+            String::from("Press s to copy world state serialized to clipboard"),
         ];
         let mut height = 0;
         for text in info_texts.iter() {
