@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rapier2d = { version = "*", features = [ "enhanced-determinism" ] }
+rapier2d-f64 = { version = "0.7.2", features = [ "enhanced-determinism", "serde-serialize" ] }
 raylib = "3.5"
 serde = "1.0.125"
 ron = "0.6.4"

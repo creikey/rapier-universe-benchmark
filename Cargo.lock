@@ -14,6 +14,9 @@ name = "arrayvec"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "269d0f5e68353a7cab87f81e7c736adc008d279a36ebc6a05dfe01193a89f0c9"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "autocfg"
@@ -38,6 +41,9 @@ name = "bit-vec"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "349f9b6a179ed607305526ca489b34ad0a41aed5f7980fa90eb03160b69598fb"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "bitflags"
@@ -283,6 +289,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "747d632c0c558b87dbabbe6a82f3b4ae03720d0646ac5b7b4dae89394be5f2c5"
 dependencies = [
  "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -327,10 +334,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "parry2d"
+name = "parry2d-f64"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca01bceaaba44ae01f18ab382f5736fa4984fcdedf919d7c28e30b41226fd860"
+checksum = "9fb362c69876aa7e2aaafe87b12f671a7af7803bb8185a1c77ca187826323692"
 dependencies = [
  "approx",
  "arrayvec",
@@ -342,6 +349,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "rustc-hash",
+ "serde",
  "simba",
  "slab",
  "smallvec",
@@ -381,17 +389,17 @@ dependencies = [
 name = "rapier-universe-benchmark"
 version = "0.1.0"
 dependencies = [
- "rapier2d",
+ "rapier2d-f64",
  "raylib",
  "ron",
  "serde",
 ]
 
 [[package]]
-name = "rapier2d"
-version = "0.7.1"
+name = "rapier2d-f64"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "406587662ea961a7df026556162c38731cf102d7344b900072a957fc957e6abd"
+checksum = "bc8440f738c6b72e08da002b607a6d3ebeeb55ef167b9feb7e9184cccfe37d62"
 dependencies = [
  "approx",
  "arrayvec",
@@ -404,8 +412,9 @@ dependencies = [
  "nalgebra",
  "num-derive",
  "num-traits",
- "parry2d",
+ "parry2d-f64",
  "rustc-hash",
+ "serde",
  "simba",
 ]
 

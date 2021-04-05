@@ -1,47 +1,53 @@
-use rapier2d::dynamics::{RigidBody, RigidBodyHandle};
-use rapier2d::geometry::{BroadPhase, ColliderBuilder, ColliderSet, NarrowPhase, SharedShape};
-use rapier2d::na::Isometry2;
-use rapier2d::na::Vector2 as phVector2;
-use rapier2d::pipeline::PhysicsPipeline;
-use rapier2d::{
+use rapier2d_f64::dynamics::{RigidBody, RigidBodyHandle};
+use rapier2d_f64::geometry::{BroadPhase, ColliderBuilder, ColliderSet, NarrowPhase, SharedShape};
+use rapier2d_f64::na::Isometry2;
+use rapier2d_f64::na::Vector2;
+use rapier2d_f64::pipeline::PhysicsPipeline;
+use rapier2d_f64::{
     dynamics::{CCDSolver, IntegrationParameters, JointSet, RigidBodyBuilder, RigidBodySet},
     na::Translation2,
 };
+use raylib::prelude::Vector2 as rlVector2;
 use raylib::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::hash::{Hash, Hasher};
+use std::time::{Duration, Instant};
+use std::{
+    f64::consts::PI,
+    hash::{Hash, Hasher},
+};
 
-const GRAV_CONSTANT: f32 = 0.0001;
+type V = Vector2<f64>;
+
+const GRAV_CONSTANT: f64 = 0.00001;
 const FRAMES_IN_HASH: u32 = 60 * 5;
 
-fn pos_of(b: &RigidBody) -> Vector2 {
+fn pos_of(b: &RigidBody) -> V {
     let position = b.position().translation;
-    Vector2::new(position.x, position.y)
+    V::new(position.x, position.y)
 }
 
-fn into_ph(v: Vector2) -> phVector2<f32> {
-    phVector2::new(v.x, v.y)
+fn from_raylib(v: rlVector2) -> V {
+    V::new(v.x as f64, v.y as f64)
+}
+
+fn into_raylib(v: V) -> rlVector2 {
+    rlVector2::new(v.x as f32, v.y as f32)
+}
+
+fn v_lerp(from: V, to: V, weight: f64) -> V {
+    from + (to - from) * weight
 }
 
 // objects are serialized so they can be hashed. it is more of a PITA to implement a custom
 // hash for floats than to just hash the serialized data
 #[derive(Serialize, Deserialize)]
-#[serde(remote = "Vector2")]
-struct Vector2Def {
-    x: f32,
-    y: f32,
-}
-
-#[derive(Serialize, Deserialize)]
 struct Planet {
-    #[serde(with = "Vector2Def")]
-    pos: Vector2,
-    #[serde(with = "Vector2Def")]
-    velocity: Vector2,
+    pos: V,
+    velocity: V,
 
-    rotation: f32,
-    rotational_velocity: f32,
-    radius: f32,
+    rotation: f64,
+    rotational_velocity: f64,
+    radius: f64,
 
     #[serde(skip, default = "RigidBodyHandle::invalid")]
     body_ref: RigidBodyHandle,
@@ -66,20 +72,20 @@ impl UniverseState {
             match bodies.get_mut(o.body_ref) {
                 // body already exists, update from my value
                 Some(b) => {
-                    b.set_position(Isometry2::new(into_ph(o.pos), o.rotation), true);
-                    b.set_linvel(into_ph(o.velocity), true);
+                    b.set_position(Isometry2::new(o.pos, o.rotation), true);
+                    b.set_linvel(o.velocity, true);
                     b.set_angvel(o.rotational_velocity, true);
                 }
                 None => {
                     let planet = RigidBodyBuilder::new_dynamic()
-                        .position(Isometry2::new(into_ph(o.pos), 0.0))
+                        .position(Isometry2::new(o.pos, 0.0))
                         .linvel(o.velocity.x, o.velocity.y)
                         .rotation(o.rotation)
                         .angvel(o.rotational_velocity)
                         .build();
                     o.body_ref = bodies.insert(planet);
                     let planet_collider = ColliderBuilder::new(SharedShape::ball(o.radius))
-                        .restitution(1.0)
+                        .restitution(0.8)
                         .build();
                     let _planet_collider_handle =
                         colliders.insert(planet_collider, o.body_ref, bodies);
@@ -92,15 +98,25 @@ impl UniverseState {
             let body = bodies.get(o.body_ref).unwrap();
             o.pos = pos_of(body);
             let linvel = body.linvel();
-            o.velocity = Vector2::new(linvel.x, linvel.y);
+            o.velocity = V::new(linvel.x, linvel.y);
             o.rotation = body.position().rotation.re;
             o.rotational_velocity = body.angvel();
         }
     }
-    fn new_planet(&mut self, radius: f32, pos: Vector2) {
+    fn new_with_vel(&mut self, radius: f64, pos: V, vel: V) {
         self.planets.push(Planet {
             pos: pos,
-            velocity: Vector2::zero(),
+            velocity: vel,
+            rotation: 0.0,
+            rotational_velocity: 0.0,
+            radius: radius,
+            body_ref: RigidBodyHandle::invalid(),
+        });
+    }
+    fn new_planet(&mut self, radius: f64, pos: V) {
+        self.planets.push(Planet {
+            pos: pos,
+            velocity: V::default(),
             rotation: 0.0,
             rotational_velocity: 0.0,
             radius: radius,
@@ -108,16 +124,28 @@ impl UniverseState {
         });
     }
 }
-
-#[derive(Hash)]
-struct HashedStr<'a>(&'a str);
+fn spawn_layer_of_planets(
+    universe: &mut UniverseState,
+    planet_size: f64,
+    radius: f64,
+    tangential_speed: f64,
+    num_planets_in_layer: i32,
+) {
+    for i in 0..num_planets_in_layer {
+        let angle = ((i as f64) / (num_planets_in_layer as f64)) * (2.0 * PI);
+        let pos = V::new(angle.sin(), angle.cos());
+        let vel_angle = pos.angle(&V::x()) + PI / 2.0;
+        let vel = V::new(vel_angle.cos(), vel_angle.sin()) * tangential_speed;
+        universe.new_with_vel(planet_size, pos * radius, vel);
+    }
+}
 
 fn main() {
     let program_git_hash = env!("GIT_HASH");
 
-    // Here the gravity is -9.81 along the y axis.
+    // -- PHYSICS STUFF --
     let mut pipeline = PhysicsPipeline::new();
-    let gravity = phVector2::new(0.0, 0.0);
+    let gravity = V::new(0.0, 0.0);
     let integration_parameters = IntegrationParameters::default();
     let mut broad_phase = BroadPhase::new();
     let mut narrow_phase = NarrowPhase::new();
@@ -129,32 +157,52 @@ fn main() {
     let physics_hooks = ();
     let event_handler = ();
 
+    // -- MAKING THE UNIVERSE --
     let mut universe = UniverseState::new();
 
-    universe.new_planet(1000.0, Vector2::new(0.0, -1100.0));
-    universe.new_planet(10.0, Vector2::zero());
+    universe.new_planet(10.0, V::default());
+    universe.new_planet(100.0, V::new(600.0, 100.0));
+    universe.new_planet(100.0, V::new(600.0, 300.0));
+    universe.new_planet(10_000.0, V::new(13_000.0, 0.0));
+    //universe.new_planet(100_000.0, V::new(0.0, -150_000.0));
+    spawn_layer_of_planets(&mut universe, 500.0, 10_000.0, 1000.0, 5);
+    spawn_layer_of_planets(&mut universe, 300.0, 6_000.0, 4000.0, 9);
+    spawn_layer_of_planets(&mut universe, 300.0, 3_000.0, -4000.0, 9);
+    spawn_layer_of_planets(&mut universe, 300.0, 4_000.0, -4000.0, 13);
+
 
     universe.apply_physically(&mut bodies, &mut colliders);
 
-    let screen_size = Vector2::new(900.0, 900.0);
+    // -- INITIALIZING RAYLIB STUFF --
+    let screen_size = V::new(900.0, 900.0);
     let (mut rl, thread) = raylib::init()
         .size(screen_size.x as i32, screen_size.y as i32)
         .title("Rapier Physics Benchmark")
         .build();
-
+    let background_texture = rl
+        .load_texture_from_image(
+            &thread,
+            &Image::gen_image_checked(512, 512, 256, 256, Color::WHITE, Color::GRAY),
+        )
+        .unwrap();
     rl.set_target_fps(60);
 
     let mut camera = Camera2D {
         zoom: 0.5,
-        offset: screen_size / 2.0,
-        target: Vector2::new(0.0, 0.0),
+        offset: into_raylib(screen_size / 2.0),
+        target: into_raylib(V::new(0.0, 0.0)),
         rotation: 0.0,
     };
 
+    // -- VARS RELATED TO THE WORLD HASH 5 SECONDS IN --
     let mut frames_simulated = 0;
     let mut world_state_hash: String = String::from("processing...");
     let mut world_state_hashed = false;
+
     while !rl.window_should_close() {
+        rl.get_time();
+        // simulate physics
+        let physics_instant = Instant::now();
         pipeline.step(
             &gravity,
             &integration_parameters,
@@ -167,17 +215,23 @@ fn main() {
             &physics_hooks,
             &event_handler,
         );
+        let physics_processing_micros = physics_instant.elapsed().as_micros();
 
         frames_simulated += 1;
 
+        // process user input
         if world_state_hashed && rl.is_key_pressed(KeyboardKey::KEY_C) {
             rl.set_clipboard_text(&world_state_hash).unwrap();
         }
+        let zoom_change = (rl.is_key_down(KeyboardKey::KEY_Q) as u8 as f64)
+            - (rl.is_key_down(KeyboardKey::KEY_E) as u8 as f64);
+        camera.zoom += (zoom_change as f32) * rl.get_frame_time() * 0.5;
+        camera.zoom = camera.zoom.clamp(0.01, 10.0) as f32;
 
+        // set hash stuff if countdown is done
         if frames_simulated < FRAMES_IN_HASH {
             world_state_hash = format!("frames left: {}", FRAMES_IN_HASH - frames_simulated);
         } else if frames_simulated == FRAMES_IN_HASH {
-            // TODO create hash here
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
             universe.update_from_physics(&bodies, &colliders);
             let universe_ron_string = ron::to_string(&universe).unwrap();
@@ -199,29 +253,54 @@ fn main() {
         }
 
         // gravitational force
-        let planet_handle = universe.planets[0].body_ref;
-        let cur_planet = bodies.get(planet_handle).unwrap();
-        let planet_center = pos_of(cur_planet);
-        let planet_mass = cur_planet.mass();
-        for (handle, body) in bodies.iter_mut() {
-            if handle == planet_handle {
-                continue;
+        let mut rigid_body_gravity_properties: Vec<(f64, V)> = Vec::with_capacity(bodies.len());
+        // TODO use the handles to check if they're the same instead of the bad distance_to call
+        for (_handle, b) in bodies.iter() {
+            rigid_body_gravity_properties.push((b.mass(), pos_of(b)));
+        }
+        // sum this up over time as iterating over each body anyways
+        let mut average_position = V::default();
+
+        for (_cur_handle, body) in bodies.iter_mut() {
+            average_position += pos_of(body);
+            for (other_body_mass, other_body_position) in rigid_body_gravity_properties.iter() {
+                let body_to_planet = (*other_body_position - pos_of(body)).normalize();
+                let distance_sqr = body_to_planet.magnitude_squared();
+                if distance_sqr < 0.1 || distance_sqr.is_nan() {
+                    // on top of eachother or the same body
+                    continue;
+                }
+                let gravity_magnitude =
+                    GRAV_CONSTANT * ((other_body_mass * body.mass()) / distance_sqr);
+                body.apply_force(body_to_planet * gravity_magnitude, true);
             }
-            let body_to_planet = (planet_center - pos_of(body)).normalized();
-            let distance_sqr = body_to_planet.length_sqr();
-            let gravity_magnitude = GRAV_CONSTANT * ((planet_mass * body.mass()) / distance_sqr);
-            body.apply_force(into_ph(body_to_planet * gravity_magnitude), true);
         }
 
-        // camera zooming in and out
-        camera.zoom = ((rl.get_time().sin() + 1.1) / 3.0) as f32;
+        average_position /= bodies.len() as f64;
+
+        // follow a tiny ball to see if physics still works
+        let target = pos_of(bodies.get(universe.planets[0].body_ref).unwrap())
+            .component_mul(&V::new(1.0, -1.0));
+        //camera.target = v_lerp(camera.target, target, rl.get_frame_time() * 13.0);
+        camera.target = into_raylib(target);
 
         // -- DRAWING START
-        // two drawing objects so camera can be used
+        // two drawing objects so camera can be used while still drawing UI
         let mut global_canvas = rl.begin_drawing(&thread);
+
+        global_canvas.clear_background(Color::WHITE);
+
         let mut d = global_canvas.begin_mode2D(camera);
 
-        d.clear_background(Color::WHITE);
+        d.draw_texture_tiled(
+            &background_texture,
+            Rectangle::new(0.0, 0.0, 512.0, 512.0),
+            Rectangle::new(-5000.0, -5000.0, 10000.0, 10000.0),
+            into_raylib(V::default()),
+            0.0,
+            1.0,
+            Color::GRAY,
+        );
 
         // draw circular bodies
         let mut drawn_bodies = 0;
@@ -239,54 +318,43 @@ fn main() {
                 Some(ball) => {
                     let body_translation = body.position().translation;
                     d.draw_circle_v(
-                        Vector2::new(body_translation.x, -body_translation.y),
-                        ball.radius,
+                        into_raylib(V::new(body_translation.x, -body_translation.y)),
+                        ball.radius as f32,
                         Color::BLACK,
                     );
                 }
                 None => (),
             }
         }
-        //println!("Drawn bodies: {}", drawn_bodies);
 
         // draw axis
+        let axis_origin = from_raylib(camera.target);
         d.draw_line_v(
-            Vector2::new(0.0, -100.0),
-            Vector2::new(0.0, 100.0),
+            into_raylib(axis_origin + V::new(0.0, -100.0)),
+            into_raylib(axis_origin + V::new(0.0, 100.0)),
             Color::GREEN,
         );
         d.draw_line_v(
-            Vector2::new(100.0, 0.0),
-            Vector2::new(-100.0, 0.0),
+            into_raylib(axis_origin + V::new(100.0, 0.0)),
+            into_raylib(axis_origin + V::new(-100.0, 0.0)),
             Color::BLUE,
         );
 
         drop(d);
 
-        // draw hash information
+        // draw hash information and other help
         let info_font_size = 16;
-        global_canvas.draw_text(
-            &format!("program hash: {}", program_git_hash),
-            0,
-            0,
-            info_font_size,
-            Color::RED,
-        );
-        global_canvas.draw_text(
-            &format!("world state hash: {}", world_state_hash),
-            0,
-            30,
-            info_font_size,
-            Color::RED,
-        );
-        if world_state_hashed {
-            global_canvas.draw_text(
-                "Press c to copy world hash to clipboard",
-                0,
-                60,
-                info_font_size,
-                Color::RED,
-            );
+        let info_texts = [
+            format!("physics processing millis: {}", (physics_processing_micros as f32)/1000.0),
+            format!("program hash: {}", program_git_hash),
+            format!("world state hash: {}", world_state_hash),
+            String::from("use the q and e keys to zoom in and out"),
+            String::from("Press c to copy world hash to clipboard"),
+        ];
+        let mut height = 0;
+        for text in info_texts.iter() {
+            global_canvas.draw_text(text, 0, height, info_font_size, Color::RED);
+            height += 30;
         }
     }
 }
