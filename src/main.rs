@@ -240,7 +240,9 @@ fn main() {
             universe.update_from_physics(&bodies, &colliders);
             world_state_ron_string = ron::ser::to_string_pretty(&universe, ron::ser::PrettyConfig::default()).unwrap();
             universe = ron::from_str(&world_state_ron_string).unwrap();
-            world_state_ron_string.as_str().hash(&mut hasher);
+            // no newlines because apparently this might be causing the hash to be different on
+            // linux
+            world_state_ron_string.replace("\n", "").as_str().hash(&mut hasher);
             world_state_hash_message = format!("{}", hasher.finish());
             world_state_hashed = true;
 
