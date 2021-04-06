@@ -236,18 +236,19 @@ fn main() {
             world_state_hash_message =
                 format!("frames left: {}", FRAMES_IN_HASH - frames_simulated);
         } else if frames_simulated == FRAMES_IN_HASH {
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
             universe.update_from_physics(&bodies, &colliders);
-            world_state_ron_string = ron::ser::to_string_pretty(&universe, ron::ser::PrettyConfig::default()).unwrap();
-            universe = ron::from_str(&world_state_ron_string).unwrap();
-            // no newlines because apparently this might be causing the hash to be different on
-            // linux
-            world_state_ron_string.replace("\n", "").as_str().hash(&mut hasher);
+
+            world_state_ron_string = ron::ser::to_string(&universe).unwrap();
+
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            world_state_ron_string.hash(&mut hasher);
             world_state_hash_message = format!("{}", hasher.finish());
+
             world_state_hashed = true;
 
-            // now that I updated the universe from the serialized state, I need to clear the
-            // physics stuff and remake it from the deserialized object
+            // deserialize the universe from the serialized string to double check that serializing
+            // works
+            universe = ron::from_str(&world_state_ron_string).unwrap();
             let mut to_remove = Vec::with_capacity(bodies.len());
             for (handle, _body) in bodies.iter() {
                 to_remove.push(handle);
